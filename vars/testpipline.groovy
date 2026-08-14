@@ -26,7 +26,7 @@ def call (){
             }
             stage('Deploy') {
                 steps {
-                    echo 'Deploying....'
+                    echo 'Deploying....' 
                 }
             }
         }
