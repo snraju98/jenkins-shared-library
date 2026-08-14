@@ -1,5 +1,5 @@
 // This is function, by default if some one calls this pipeline like testPipeline call function will be executed
-def call (){
+def call (Map configMap){
     pipeline {
        agent any
        environment {
