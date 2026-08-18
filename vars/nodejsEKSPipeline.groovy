@@ -46,7 +46,7 @@ def call (Map configMap){
                 }
             }
             // this command gives us coverage report and test cases report, sonarqube access this to check quality gate
-            stage('Unit tests') {
+             stage('Unit tests') {
                 steps {
                     script {
                         try{
@@ -87,46 +87,65 @@ def call (Map configMap){
             }
             stage('Check Dependabot Alerts') {
                 steps {
-                    withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
-                        sh '''
-                            set -e
+                    script{
+                        try{
+                            withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
+                            
+                                sh '''
+                                    set -e
 
-                            REPO="${org}/${component}"
+                                    REPO="${org}/${component}"
 
-                            curl -s -L \
-                            -H "Accept: application/vnd.github+json" \
-                            -H "Authorization: Bearer ${GH_TOKEN}" \
-                            -H "X-GitHub-Api-Version: 2026-03-10" \
-                            "https://api.github.com/repos/${REPO}/dependabot/alerts?state=open" \
-                            -o alerts.json
+                                    curl -s -L \
+                                    -H "Accept: application/vnd.github+json" \
+                                    -H "Authorization: Bearer ${GH_TOKEN}" \
+                                    -H "X-GitHub-Api-Version: 2026-03-10" \
+                                    "https://api.github.com/repos/${REPO}/dependabot/alerts?state=open" \
+                                    -o alerts.json
 
-                            echo "---- Open Dependabot Alerts ----"
-                            jq -r '.[] | "\\(.number)\\t\\(.security_vulnerability.severity)\\t\\(.dependency.package.name)\\t\\(.security_advisory.ghsa_id)"' alerts.json
+                                    echo "---- Open Dependabot Alerts ----"
+                                    jq -r '.[] | "\\(.number)\\t\\(.security_vulnerability.severity)\\t\\(.dependency.package.name)\\t\\(.security_advisory.ghsa_id)"' alerts.json
 
-                            HIGH_CRITICAL_COUNT=$(jq '[.[] | select(.security_vulnerability.severity == "high" or .security_vulnerability.severity == "critical")] | length' alerts.json)
+                                    HIGH_CRITICAL_COUNT=$(jq '[.[] | select(.security_vulnerability.severity == "high" or .security_vulnerability.severity == "critical")] | length' alerts.json)
 
-                            echo "High/Critical alert count: ${HIGH_CRITICAL_COUNT}"
+                                    echo "High/Critical alert count: ${HIGH_CRITICAL_COUNT}"
 
-                            if [ "$HIGH_CRITICAL_COUNT" -gt 0 ]; then
-                                echo "❌ Found ${HIGH_CRITICAL_COUNT} High/Critical severity dependency alert(s). Failing build."
-                                exit 1
-                            else
-                                echo "✅ No High/Critical dependency alerts found."
-                            fi
-                        '''
-                    }
+                                    if [ "$HIGH_CRITICAL_COUNT" -gt 0 ]; then
+                                        echo "❌ Found ${HIGH_CRITICAL_COUNT} High/Critical severity dependency alert(s). Failing build."
+                                        
+                                        exit 1
+                                    else
+                                        echo "✅ No High/Critical dependency alerts found."  
+                                    fi
+                                '''
+                                utils.updateCommitStatus("success", "library scan success", "library-scan")
+                            
+                            }
+                        }
+                        catch (Exception e){
+                                utils.updateCommitStatus("failure", "library scan failed", "library-scan")
+                                throw e
+                        }
+                    } 
                 }
             }
             stage('Docker Build') {
                 steps {
                     script {
                         // in this block we get aws authentication
-                        withAWS(credentials: 'aws-creds', region: 'us-east-1') {
-                            sh """
-                                aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${acc_id}.dkr.ecr.us-east-1.amazonaws.com
-                                docker build -t ${acc_id}.dkr.ecr.us-east-1.amazonaws.com/${project}/${component}:${appVersion} .
-                            """
+                        try{
+                            withAWS(credentials: 'aws-creds', region: 'us-east-1') {
+                                sh """
+                                    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${acc_id}.dkr.ecr.us-east-1.amazonaws.com
+                                    docker build -t ${acc_id}.dkr.ecr.us-east-1.amazonaws.com/${project}/${component}:${appVersion} .
+                                """
+                            }
+                            utils.updateCommitStatus("success", "image build success", "build-image")
                         }
+                        catch(Exception e){
+                            utils.updateCommitStatus("failure", "image build failed", "build-image")
+                            throw e
+                        } 
                     }
                 }
             }
@@ -148,7 +167,11 @@ def call (Map configMap){
                         )
 
                         if (dockerfileScan != 0 || imageScan != 0) {
+                            utils.updateCommitStatus("failure", "trivy scan failed", "trivy-scan")
                             error "Trivy found HIGH/CRITICAL issues in Dockerfile and/or OS packages. Failing pipeline."
+                        }
+                        else{
+                            utils.updateCommitStatus("success", "trivy scan success", "trivy-scan")
                         }
                     }
                 }
@@ -157,12 +180,20 @@ def call (Map configMap){
                 steps {
                     script {
                         // in this block we get aws authentication
-                        withAWS(credentials: 'aws-creds', region: 'us-east-1') {
-                            sh """
-                                aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${acc_id}.dkr.ecr.us-east-1.amazonaws.com
-                                docker push ${acc_id}.dkr.ecr.us-east-1.amazonaws.com/${project}/${component}:${appVersion}
-                            """
+                        try{
+                            withAWS(credentials: 'aws-creds', region: 'us-east-1') {
+                                sh """
+                                    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${acc_id}.dkr.ecr.us-east-1.amazonaws.com
+                                    docker push ${acc_id}.dkr.ecr.us-east-1.amazonaws.com/${project}/${component}:${appVersion}
+                                """
+                            }
+                            utils.updateCommitStatus("success", "image push success", "push-image")
                         }
+                        catch(Exception e){
+                            utils.updateCommitStatus("failure", "image push failed", "push-image")
+                            throw e
+                        }
+                        
                     }
                 }
             }
