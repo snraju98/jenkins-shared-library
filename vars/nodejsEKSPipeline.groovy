@@ -49,13 +49,19 @@ def call (Map configMap){
             stage('Unit tests') {
                 steps {
                     script {
-                        sh """
-                            npm test
-                        """
+                        try{
+                            sh """
+                                npm test
+                            """
+                            utils.updateCommitStatus("success", "unit tests are successful", "unit-tests")
+                        }
+                        catch(Exception e){
+                            utils.updateCommitStatus("failiure", "unit tests are failed", "unit-tests")
+                        }
                     } 
                 }
             }
-            /* stage('SonarQube Analysis') {
+            stage('SonarQube Analysis') {
                 steps {
                     // 'My SonarQube Server' must match the name configured in Jenkins System Settings
                     withSonarQubeEnv('sonar-server') {
@@ -69,12 +75,16 @@ def call (Map configMap){
                         script {
                             def qg = waitForQualityGate() // Pauses pipeline
                             if (qg.status != 'OK') {
+                                utils.updateCommitStatus("failure", "sonar scan are failed", "sonar-scan")
                                 error "Pipeline aborted: ${qg.status}"
+                            }
+                            else{
+                                utils.updateCommitStatus("success", "sonar scan are successful", "sonar-scan")
                             }
                         }
                     }
                 }
-            } */
+            }
             // stage('Check Dependabot Alerts') {
             //     steps {
             //         withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
