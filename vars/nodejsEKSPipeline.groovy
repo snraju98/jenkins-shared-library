@@ -16,14 +16,6 @@ def call (Map configMap){
             disableConcurrentBuilds()
             timeout(time: 15, unit: 'MINUTES')
         }
-        /* parameters {
-            string(name: 'PERSON', defaultValue: 'Mr Jenkins', description: 'Who should I say hello to?')
-            text(name: 'BIOGRAPHY', defaultValue: '', description: 'Enter some information about the person')
-            booleanParam(name: 'DEPLOY', defaultValue: true, description: 'Toggle this value')
-            choice(name: 'CHOICE', choices: ['One', 'Two', 'Three'], description: 'Pick something')
-            password(name: 'PASSWORD', defaultValue: 'SECRET', description: 'Enter a password')
-        } */
-        // Build
         stages {
             stage('Read version'){
                 steps{
@@ -32,7 +24,6 @@ def call (Map configMap){
                         // Extract the version property
                         appVersion = packageJson.version
                         echo "The application version is: ${appVersion}"
-                        
                     }
                 }
             }
@@ -46,7 +37,7 @@ def call (Map configMap){
                 }
             }
             // this command gives us coverage report and test cases report, sonarqube access this to check quality gate
-             stage('Unit tests') {
+            stage('Unit tests') {
                 steps {
                     script {
                         try{
@@ -56,7 +47,7 @@ def call (Map configMap){
                             utils.updateCommitStatus("success", "unit tests are successful", "unit-tests")
                         }
                         catch(Exception e){
-                            utils.updateCommitStatus("failiure", "unit tests are failed", "unit-tests")
+                            utils.updateCommitStatus("failure", "unit tests are failed", "unit-tests")
                         }
                     } 
                 }
@@ -69,8 +60,9 @@ def call (Map configMap){
                     } */
                     script {
                         sh """
-                        echo "sonarqube analysis done"
-                    }   """                   
+                            echo "sonarqube analysis done"
+                        """
+                    }                   
                 }
             }
             stage('SonarQube Quality Gate') {
@@ -82,7 +74,7 @@ def call (Map configMap){
                             // if (qg.status != 'OK') {
                             if (qg != 'OK') {
                                 utils.updateCommitStatus("failure", "sonar scan are failed", "sonar-scan")
-                                error "Pipeline aborted: ${qg.status}"
+                                error "Pipeline aborted: ${qg}"
                             }
                             else{
                                 utils.updateCommitStatus("success", "sonar scan are successful", "sonar-scan")
@@ -96,41 +88,38 @@ def call (Map configMap){
                     script{
                         try{
                             withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
-                            
-                                sh '''
+                                sh """
                                     set -e
 
                                     REPO="${org}/${component}"
 
-                                    curl -s -L \
-                                    -H "Accept: application/vnd.github+json" \
-                                    -H "Authorization: Bearer ${GH_TOKEN}" \
-                                    -H "X-GitHub-Api-Version: 2026-03-10" \
-                                    "https://api.github.com/repos/${REPO}/dependabot/alerts?state=open" \
+                                    curl -s -L \\
+                                    -H "Accept: application/vnd.github+json" \\
+                                    -H "Authorization: Bearer \${GH_TOKEN}" \\
+                                    -H "X-GitHub-Api-Version: 2022-11-28" \\
+                                    "https://api.github.com/repos/\${REPO}/dependabot/alerts?state=open" \\
                                     -o alerts.json
 
                                     echo "---- Open Dependabot Alerts ----"
                                     jq -r '.[] | "\\(.number)\\t\\(.security_vulnerability.severity)\\t\\(.dependency.package.name)\\t\\(.security_advisory.ghsa_id)"' alerts.json
 
-                                    HIGH_CRITICAL_COUNT=$(jq '[.[] | select(.security_vulnerability.severity == "high" or .security_vulnerability.severity == "critical")] | length' alerts.json)
+                                    HIGH_CRITICAL_COUNT=\$(jq '[.[] | select(.security_vulnerability.severity == "high" or .security_vulnerability.severity == "critical")] | length' alerts.json)
 
-                                    echo "High/Critical alert count: ${HIGH_CRITICAL_COUNT}"
+                                    echo "High/Critical alert count: \${HIGH_CRITICAL_COUNT}"
 
-                                    if [ "$HIGH_CRITICAL_COUNT" -gt 0 ]; then
-                                        echo "❌ Found ${HIGH_CRITICAL_COUNT} High/Critical severity dependency alert(s). Failing build."
-                                        
+                                    if [ "\$HIGH_CRITICAL_COUNT" -gt 0 ]; then
+                                        echo "❌ Found \${HIGH_CRITICAL_COUNT} High/Critical severity dependency alert(s). Failing build."
                                         exit 1
                                     else
-                                        echo "✅ No High/Critical dependency alerts found."  
+                                        echo "✅ No High/Critical dependency alerts found."   
                                     fi
-                                '''
+                                """
                                 utils.updateCommitStatus("success", "library scan success", "library-scan")
-                            
                             }
                         }
                         catch (Exception e){
-                                utils.updateCommitStatus("failure", "library scan failed", "library-scan")
-                                throw e
+                            utils.updateCommitStatus("failure", "library scan failed", "library-scan")
+                            throw e
                         }
                     } 
                 }
@@ -138,7 +127,6 @@ def call (Map configMap){
             stage('Docker Build') {
                 steps {
                     script {
-                        // in this block we get aws authentication
                         try{
                             withAWS(credentials: 'aws-creds', region: 'us-east-1') {
                                 sh """
@@ -185,7 +173,6 @@ def call (Map configMap){
             stage('ECR Image push') {
                 steps {
                     script {
-                        // in this block we get aws authentication
                         try{
                             withAWS(credentials: 'aws-creds', region: 'us-east-1') {
                                 sh """
@@ -199,7 +186,6 @@ def call (Map configMap){
                             utils.updateCommitStatus("failure", "image push failed", "push-image")
                             throw e
                         }
-                        
                     }
                 }
             }
@@ -211,8 +197,8 @@ def call (Map configMap){
                                 sh """
                                     aws eks update-kubeconfig --region us-east-1 --name roboshop
                                     cd helm
-                                    helm upgrade --install ${component} -f values-dev.yaml -n roboshop-dev \
-                                    --set deployment.imageVersion=${appVersion} \
+                                    helm upgrade --install ${component} -f values-dev.yaml -n roboshop-dev \\
+                                    --set deployment.imageVersion=${appVersion} \\
                                     --wait --timeout 5m .
 
                                     kubectl rollout status deployment/${component} -n roboshop-dev --timeout=2m
@@ -227,6 +213,7 @@ def call (Map configMap){
                     }
                 }
             }
+        }
         post { 
             always { 
                 echo 'I will always say Hello again!'
@@ -240,3 +227,5 @@ def call (Map configMap){
         }
     }
 }
+
+     
