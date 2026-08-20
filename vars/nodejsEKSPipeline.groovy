@@ -219,13 +219,14 @@ def call (Map configMap){
                 echo 'I will always say Hello again!'
             }
             success {
-            slackSend channel: '#jenkins-alerts-90s',
-                      color: 'good',
-                      message: "SUCCESS: Job '${env.JOB_NAME}' (${env.BUILD_NUMBER}) (<${env.BUILD_URL}|View Build>)" 
+                slackSend channel: '#jenkins-alerts-90s',
+                          color: 'good',
+                          message: "SUCCESS: Job '${env.JOB_NAME}' (${env.BUILD_NUMBER}) (<${env.BUILD_URL}|View Build>)" 
+            }
             failure { 
-            slackSend channel: '#jenkins-alerts-90s',
-                      color: 'danger',
-                      message: "Failure: Job '${env.JOB_NAME}' (${env.BUILD_NUMBER}) (<${env.BUILD_URL}|View Build>)"
+                slackSend channel: '#jenkins-alerts-90s',
+                          color: 'danger',
+                          message: "Failure: Job '${env.JOB_NAME}' (${env.BUILD_NUMBER}) (<${env.BUILD_URL}|View Build>)"
             }
         }
     }
