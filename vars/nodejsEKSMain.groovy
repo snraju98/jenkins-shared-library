@@ -26,7 +26,7 @@ def call(Map configMap) {
                     }
                 }
             }
-            stage('Deploy') {
+            stage('Dev Deploy') {
                 steps {
                     script {
                         try {
@@ -50,48 +50,7 @@ def call(Map configMap) {
                     }
                 }
             }
-            stage('api-tests') {
-                steps {
-                    script {
-                        try {
-                            build job: 'ROBOSHOP/catalogue-api-tests', parameters: [
-                                string(name: 'NAMESPACE', value: 'roboshop-dev'),
-                                string(name: 'COMMIT_ID', value: env.GIT_COMMIT)
-                            ], wait: true, propagate: true
-                            utils.updateCommitStatus('success', 'catalogue-api-tests passed', 'api-tests')
-                        }
-                        catch (Exception e) {
-                            utils.updateCommitStatus('failure', 'catalogue-api-tests failed', 'api-tests')
-                            throw e
-                        }
-                    }
-                }
-            }
-            stage('Deploy') {
-                steps {
-                    script {
-                        try {
-                            withAWS(credentials: 'aws-creds', region: 'us-east-1') {
-                                sh """
-                                    aws eks update-kubeconfig --region us-east-1 --name roboshop-dev
-                                    cd helm
-                                    helm upgrade --install ${component} -f values-dev.yaml -n roboshop-dev \\
-                                    --set deployment.imageVersion=${appVersion} \\
-                                    --wait --timeout 5m .
-
-                                    kubectl rollout status deployment/${component} -n roboshop-dev --timeout=2m
-                                """
-                            }
-                            utils.updateCommitStatus("success", "dev deploy succcess", "dev-deploy")
-                        }
-                        catch (Exception e) {
-                            utils.updateCommitStatus("failure", "dev deploy failed", "dev-deploy")
-                            throw e
-                        }
-                    }
-                }
-            }
-            stage('api-tests') {
+            stage('Dev API Tests') {
                 steps {
                     script {
                         try {
