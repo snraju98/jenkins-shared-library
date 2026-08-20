@@ -1,4 +1,4 @@
-def call (Map configMap){
+def call(Map configMap) {
     pipeline {
         agent { 
             node { 
@@ -17,11 +17,10 @@ def call (Map configMap){
             timeout(time: 15, unit: 'MINUTES')
         }
         stages {
-            stage('Read version'){
-                steps{
+            stage('Read version') {
+                steps {
                     script {
                         def packageJson = readJSON file: 'package.json'
-                        // Extract the version property
                         appVersion = packageJson.version
                         echo "The application version is: ${appVersion}"
                     }
@@ -36,17 +35,16 @@ def call (Map configMap){
                     } 
                 }
             }
-            // this command gives us coverage report and test cases report, sonarqube access this to check quality gate
             stage('Unit tests') {
                 steps {
                     script {
-                        try{
+                        try {
                             sh """
                                 npm test
                             """
                             utils.updateCommitStatus("success", "unit tests are successful", "unit-tests")
                         }
-                        catch(Exception e){
+                        catch (Exception e) {
                             utils.updateCommitStatus("failure", "unit tests are failed", "unit-tests")
                         }
                     } 
@@ -54,10 +52,6 @@ def call (Map configMap){
             }
             stage('SonarQube Analysis') {
                 steps {
-                    /* // 'My SonarQube Server' must match the name configured in Jenkins System Settings
-                    withSonarQubeEnv('sonar-server') {
-                        sh "${tool 'sonar-8'}/bin/sonar-scanner"
-                    } */
                     script {
                         sh """
                             echo "sonarqube analysis done"
@@ -69,14 +63,12 @@ def call (Map configMap){
                 steps {
                     timeout(time: 10, unit: 'MINUTES') {
                         script {
-                            //def qg = waitForQualityGate() // Pauses pipeline
                             def qg = "OK"
-                            // if (qg.status != 'OK') {
                             if (qg != 'OK') {
                                 utils.updateCommitStatus("failure", "sonar scan are failed", "sonar-scan")
                                 error "Pipeline aborted: ${qg}"
                             }
-                            else{
+                            else {
                                 utils.updateCommitStatus("success", "sonar scan are successful", "sonar-scan")
                             }
                         }
@@ -85,8 +77,8 @@ def call (Map configMap){
             }
             stage('Check Dependabot Alerts') {
                 steps {
-                    script{
-                        try{
+                    script {
+                        try {
                             withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
                                 sh """
                                     set -e
@@ -117,7 +109,7 @@ def call (Map configMap){
                                 utils.updateCommitStatus("success", "library scan success", "library-scan")
                             }
                         }
-                        catch (Exception e){
+                        catch (Exception e) {
                             utils.updateCommitStatus("failure", "library scan failed", "library-scan")
                             throw e
                         }
@@ -127,7 +119,7 @@ def call (Map configMap){
             stage('Docker Build') {
                 steps {
                     script {
-                        try{
+                        try {
                             withAWS(credentials: 'aws-creds', region: 'us-east-1') {
                                 sh """
                                     aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${acc_id}.dkr.ecr.us-east-1.amazonaws.com
@@ -136,7 +128,7 @@ def call (Map configMap){
                             }
                             utils.updateCommitStatus("success", "image build success", "build-image")
                         }
-                        catch(Exception e){
+                        catch (Exception e) {
                             utils.updateCommitStatus("failure", "image build failed", "build-image")
                             throw e
                         } 
@@ -164,7 +156,7 @@ def call (Map configMap){
                             utils.updateCommitStatus("failure", "trivy scan failed", "trivy-scan")
                             error "Trivy found HIGH/CRITICAL issues in Dockerfile and/or OS packages. Failing pipeline."
                         }
-                        else{
+                        else {
                             utils.updateCommitStatus("success", "trivy scan success", "trivy-scan")
                         }
                     }
@@ -173,7 +165,7 @@ def call (Map configMap){
             stage('ECR Image push') {
                 steps {
                     script {
-                        try{
+                        try {
                             withAWS(credentials: 'aws-creds', region: 'us-east-1') {
                                 sh """
                                     aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${acc_id}.dkr.ecr.us-east-1.amazonaws.com
@@ -182,7 +174,7 @@ def call (Map configMap){
                             }
                             utils.updateCommitStatus("success", "image push success", "push-image")
                         }
-                        catch(Exception e){
+                        catch (Exception e) {
                             utils.updateCommitStatus("failure", "image push failed", "push-image")
                             throw e
                         }
@@ -192,7 +184,7 @@ def call (Map configMap){
             stage('Deploy') {
                 steps {
                     script {
-                        try{
+                        try {
                             withAWS(credentials: 'aws-creds', region: 'us-east-1') {
                                 sh """
                                     aws eks update-kubeconfig --region us-east-1 --name roboshop-dev
@@ -206,16 +198,16 @@ def call (Map configMap){
                             }
                             utils.updateCommitStatus("success", "dev deploy succcess", "dev-deploy")
                         }
-                        catch(Exception e){
+                        catch (Exception e) {
                             utils.updateCommitStatus("failure", "dev deploy failed", "dev-deploy")
                             throw e
                         }
                     }
                 }
             }
-            stage('api-tests'){
-                steps{
-                    script{
+            stage('api-tests') {
+                steps {
+                    script {
                         try {
                             build job: 'ROBOSHOP/catalogue-api-tests', parameters: [
                                 string(name: 'NAMESPACE', value: 'roboshop-dev'),
@@ -226,6 +218,7 @@ def call (Map configMap){
                         catch (Exception e) {
                             utils.updateCommitStatus('failure', 'catalogue-api-tests failed', 'api-tests')
                             throw e
+                        }
                     }
                 }
             }
@@ -247,7 +240,5 @@ def call (Map configMap){
         }
     }
 }
-}
-
 
      
